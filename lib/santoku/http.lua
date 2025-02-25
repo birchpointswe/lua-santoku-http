@@ -9,12 +9,11 @@ local ltn12 = require("ltn12")
 local json = require("cjson")
 local str = require("santoku.string")
 local arr = require("santoku.array")
-local err = require("santoku.error")
-local fun = require("santoku.functional")
 local asy = require("santoku.async")
 local sys = require("santoku.system")
 local varg = require("santoku.varg")
 local rand = require("santoku.random")
+local err = require("santoku.error")
 
 local M = {}
 
@@ -69,7 +68,7 @@ M.request = function (url, opts, done, retry)
   end
   req.url = url
   req.qstr = req.params and str.to_query(req.params) or ""
-  req.done = req.done or done or fun.id
+  req.done = req.done or done or err.checkok
   req.events = asy.events()
   req.retry = req.retry == nil and {} or req.retry
   if req.retry then
