@@ -66,7 +66,7 @@ M.request = function (url, opts, done, retry, raw)
     req.raw = raw or opts.raw
   end
   req.qstr = req.params and str.to_query(req.params) or ""
-  req.done = req.done or done or fun.noop
+  req.done = req.done or done or fun.id
   req.events = asy.events()
   req.retry = req.retry == nil and {} or req.retry
   if req.retry then
@@ -146,7 +146,7 @@ end
 M.get = function (...)
   local req = M.request(...)
   req.method = "GET"
-  fetch_request(req)
+  return fetch_request(req)
 end
 
 M.post = function (...)
@@ -154,7 +154,7 @@ M.post = function (...)
   req.method = "POST"
   req.headers = req.headers or {}
   req.headers["content-type"] = req.headers["content-type"] or "application/json"
-  fetch_request(req)
+  return fetch_request(req)
 end
 
 local intercept = function (fn, events)

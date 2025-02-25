@@ -1,7 +1,7 @@
 local env = {
 
   name = "santoku-http",
-  version = "0.0.3-1",
+  version = "0.0.4-1",
   public = true,
 
   dependencies = {
