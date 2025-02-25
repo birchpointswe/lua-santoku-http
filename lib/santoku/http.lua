@@ -52,6 +52,7 @@ M.request = function (url, opts, done, retry)
     opts = nil
   end
   if type(url) ~= "string" then
+    req.method = url.method
     req.url = url.url
     req.body = url.body
     req.params = url.params
@@ -59,6 +60,7 @@ M.request = function (url, opts, done, retry)
     req.done = done or url.done
     req.retry = retry or url.retry
   elseif opts then
+    req.method = opts.method
     req.body = opts.body
     req.params = opts.params
     req.headers = opts.headers
@@ -144,6 +146,12 @@ M.fetch = function (url, opts, req)
   end))
 end
 
+M.req = function (...)
+  local req = M.request(...)
+  req.method = req.method or "GET"
+  return fetch_request(req)
+end
+
 M.get = function (...)
   local req = M.request(...)
   req.method = "GET"
@@ -184,6 +192,7 @@ M.http_client = function ()
   return {
     on = events.on,
     off = events.off,
+    req = intercept(M.req, events),
     get = intercept(M.get, events),
     post = intercept(M.post, events)
   }
