@@ -41,13 +41,16 @@ local function fetch_request (req)
 end
 
 
-
-M.request = function (url, opts, done, retry, raw)
+M.request = function (url, opts, done, retry)
   if url and reqs[url] then
     return url
   end
   local req = {}
   reqs[req] = true
+  if type(opts) == "function" then
+    done, retry = opts, done
+    opts = nil
+  end
   if type(url) ~= "string" then
     req.url = url.url
     req.body = url.body
@@ -55,16 +58,14 @@ M.request = function (url, opts, done, retry, raw)
     req.headers = url.headers
     req.done = done or url.done
     req.retry = retry or url.retry
-    req.raw = raw or url.raw
   elseif opts then
-    req.url = url
     req.body = opts.body
     req.params = opts.params
     req.headers = opts.headers
-    req.done = done or url.done
+    req.done = done or opts.done
     req.retry = retry or opts.retry
-    req.raw = raw or opts.raw
   end
+  req.url = url
   req.qstr = req.params and str.to_query(req.params) or ""
   req.done = req.done or done or fun.id
   req.events = asy.events()

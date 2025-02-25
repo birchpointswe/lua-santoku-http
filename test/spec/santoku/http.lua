@@ -10,6 +10,10 @@ test("get", function ()
     print(serialize({...}))
     return ...
   end)}))
+  print(serialize({http.get("http://localhost:8000/test.json", function (...)
+    print(serialize({...}))
+    return ...
+  end)}))
 end)
 
 test("post", function ()
@@ -17,6 +21,10 @@ test("post", function ()
     body = { a = 1, b = "2", c = nil, d = true },
     headers = { ["x-test-something"] = "this is a header" }
   }, function (...)
+    print(serialize({...}))
+    return ...
+  end)}))
+  print(serialize({http.get("http://localhost:8000/test", function (...)
     print(serialize({...}))
     return ...
   end)}))
