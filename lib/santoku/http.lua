@@ -187,7 +187,7 @@ end
 
 
 
-M.http_client = function ()
+M.client = function ()
   local events = asy.events()
   return {
     on = events.on,
