@@ -167,7 +167,7 @@ end
 
 local intercept = function (fn, events)
   return function (...)
-    events.process("request", nil, function (req0)
+    return events.process("request", nil, function (req0)
       req0.events.on("response", function (done0, ok0, ...)
         return events.process("response", function (done1, ok1, req1, ...)
           if ok1 == "retry" then
