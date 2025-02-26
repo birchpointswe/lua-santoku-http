@@ -84,7 +84,7 @@ M.request = function (url, opts, done, retry)
     req.events.on("response", function (k, ...)
       if times > 0 and filter(...) then
 
-        sys.sleep((backoff + (backoff * rand.num())) * 1000)
+        sys.sleep(backoff + (backoff * rand.num()))
         times = times - 1
         backoff = backoff * multiplier
         return fetch_request(req)
