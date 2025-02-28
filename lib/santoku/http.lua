@@ -136,7 +136,7 @@ M.request = function (...)
   end
 
   req.events = asy.events()
-  req.retry = opts.retry == nil and {} or req.retry
+  req.retry = opts.retry == nil and {} or opts.retry
 
   if req.retry then
     local retry = type(req.retry) == "table" and req.retry or {}
