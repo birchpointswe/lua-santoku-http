@@ -1,7 +1,6 @@
 local async = require("santoku.async")
 local str = require("santoku.string")
 local rand = require("santoku.random")
-local json = require("cjson")
 
 return function (backend)
   local events = async.events()
@@ -65,11 +64,6 @@ return function (backend)
   local function post (url, opts, done)
     opts = opts or {}
     opts.method = "POST"
-    opts.headers = opts.headers or {}
-    opts.headers["content-type"] = opts.headers["content-type"] or "application/json"
-    if opts.body and type(opts.body) == "table" then
-      opts.body = json.encode(opts.body)
-    end
     return fetch(url, opts, done)
   end
 
