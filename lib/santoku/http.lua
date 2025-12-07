@@ -23,9 +23,10 @@ return function (backend)
     local times = retry.times or 3
     local backoff = retry.backoff or 1000
     local multiplier = retry.multiplier or 3
-    local filter = retry.filter or function (ok, resp)
+    local filter = retry.filter or function (_, resp)
       local s = resp and resp.status
-      return not ok or s == 502 or s == 503 or s == 504 or s == 429
+      if not s or s == 0 then return true end
+      return s == 502 or s == 503 or s == 504 or s == 429
     end
     return function (url, opts0, done)
       local attempt
