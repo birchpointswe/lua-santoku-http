@@ -7,7 +7,7 @@ local env = {
 
   dependencies = {
     "lua == 5.1",
-    "santoku >= 0.0.310-1",
+    "santoku >= 0.0.314-1",
   },
 
 

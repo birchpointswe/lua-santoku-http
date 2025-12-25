@@ -5,12 +5,10 @@ local rand = require("santoku.random")
 return function (backend)
   local events = async.events()
 
-  local function do_fetch (url, opts, done)
-    return events.process("request", nil, function (url0, opts0)
-      return backend.fetch(url0, opts0, function (ok, resp)
-        return events.process("response", nil, done, ok, resp)
-      end)
-    end, url, opts)
+  local function do_fetch (url, opts)
+    url, opts = events.process("request", nil, url, opts)
+    local ok, resp = backend.fetch(url, opts)
+    return events.process("response", nil, ok, resp)
   end
 
   local function with_retry (fetch_fn, opts)
@@ -27,44 +25,40 @@ return function (backend)
       if not s or s == 0 then return true end
       return s == 502 or s == 503 or s == 504 or s == 429
     end
-    return function (url, opts0, done)
-      local attempt
-      attempt = function ()
-        return fetch_fn(url, opts0, function (ok, resp)
-          if times > 0 and filter(ok, resp) then
-            times = times - 1
-            local delay = backoff + (backoff * rand.num())
-            backoff = backoff * multiplier
-            return backend.sleep(delay, attempt)
-          else
-            return done(ok, resp)
-          end
-        end)
+    return function (url0, opts0)
+      while times > 0 do
+        local ok, resp = fetch_fn(url0, opts0)
+        if not filter(ok, resp) then
+          return ok, resp
+        end
+        times = times - 1
+        local delay = backoff + (backoff * rand.num())
+        backoff = backoff * multiplier
+        backend.sleep(delay)
       end
-      return attempt()
+      return fetch_fn(url0, opts0)
     end
   end
 
-  local function fetch (url, opts, done)
+  local function fetch (url, opts)
     opts = opts or {}
-    done = done or opts.done
     local fetcher = with_retry(do_fetch, opts)
-    return fetcher(url, opts, done)
+    return fetcher(url, opts)
   end
 
-  local function get (url, opts, done)
+  local function get (url, opts)
     opts = opts or {}
     opts.method = "GET"
     if opts.params then
       url = url .. str.to_query(opts.params)
     end
-    return fetch(url, opts, done)
+    return fetch(url, opts)
   end
 
-  local function post (url, opts, done)
+  local function post (url, opts)
     opts = opts or {}
     opts.method = "POST"
-    return fetch(url, opts, done)
+    return fetch(url, opts)
   end
 
   return {
