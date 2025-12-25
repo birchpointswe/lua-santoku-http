@@ -6,9 +6,16 @@ return function (backend)
   local events = async.events()
 
   local function do_fetch (url, opts)
-    url, opts = events.process("request", nil, url, opts)
-    local ok, resp = backend.fetch(url, opts)
-    return events.process("response", nil, ok, resp)
+    local req_url, req_opts
+    events.process("request", nil, function (u, o)
+      req_url, req_opts = u, o
+    end, url, opts)
+    local ok, resp = backend.fetch(req_url, req_opts)
+    local res_ok, res_resp
+    events.process("response", nil, function (o, r)
+      res_ok, res_resp = o, r
+    end, ok, resp)
+    return res_ok, res_resp
   end
 
   local function with_retry (fetch_fn, opts)
