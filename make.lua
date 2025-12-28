@@ -1,13 +1,13 @@
 local env = {
 
   name = "santoku-http",
-  version = "0.0.21-1",
+  version = "0.0.22-1",
   license = "MIT",
   public = true,
 
   dependencies = {
     "lua == 5.1",
-    "santoku >= 0.0.314-1",
+    "santoku >= 0.0.318-1",
   },
 
 

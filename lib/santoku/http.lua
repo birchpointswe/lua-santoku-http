@@ -5,52 +5,97 @@ local rand = require("santoku.random")
 return function (backend)
   local events = async.events()
 
-  local function do_fetch (url, opts)
+  local function do_request (url, opts)
     local req_url, req_opts
     events.process("request", nil, function (u, o)
       req_url, req_opts = u, o
     end, url, opts)
-    local ok, resp = backend.fetch(req_url, req_opts)
-    local res_ok, res_resp
-    events.process("response", nil, function (o, r)
-      res_ok, res_resp = o, r
-    end, ok, resp)
-    return res_ok, res_resp
+    if backend.request then
+      local req = backend.request(req_url, req_opts)
+      return {
+        cancel = req.cancel,
+        await = function ()
+          local ok, resp = req.await()
+          local res_ok, res_resp
+          events.process("response", nil, function (o, r)
+            res_ok, res_resp = o, r
+          end, ok, resp)
+          return res_ok, res_resp
+        end
+      }
+    else
+      return {
+        cancel = function () end,
+        await = function ()
+          local ok, resp = backend.fetch(req_url, req_opts)
+          local res_ok, res_resp
+          events.process("response", nil, function (o, r)
+            res_ok, res_resp = o, r
+          end, ok, resp)
+          return res_ok, res_resp
+        end
+      }
+    end
   end
 
-  local function with_retry (fetch_fn, opts)
+  local function create_request (url, opts)
     local retry = opts.retry == nil and {} or opts.retry
-    if not retry then
-      return fetch_fn
-    end
-    retry = type(retry) == "table" and retry or {}
-    local times = retry.times or 3
-    local backoff = retry.backoff or 1000
-    local multiplier = retry.multiplier or 3
-    local filter = retry.filter or function (_, resp)
+    local times = retry and (retry.times or 3) or 0
+    local backoff = retry and (retry.backoff or 1000) or 0
+    local multiplier = retry and (retry.multiplier or 3) or 1
+    local filter = retry and (retry.filter or function (_, resp)
       local s = resp and resp.status
       if not s or s == 0 then return true end
       return s == 502 or s == 503 or s == 504 or s == 429
-    end
-    return function (url0, opts0)
-      while times > 0 do
-        local ok, resp = fetch_fn(url0, opts0)
-        if not filter(ok, resp) then
-          return ok, resp
+    end) or function () return false end
+
+    local canceled = false
+    local current_req = nil
+
+    return {
+      cancel = function ()
+        canceled = true
+        if current_req then current_req.cancel() end
+      end,
+      await = function ()
+        local attempts = 0
+        while attempts <= times do
+          if canceled then
+            return false, { status = 0, canceled = true }
+          end
+          current_req = do_request(url, opts)
+          local ok, resp = current_req.await()
+          current_req = nil
+          if canceled or (resp and resp.canceled) then
+            return false, { status = 0, canceled = true }
+          end
+          if not filter(ok, resp) then
+            return ok, resp
+          end
+          attempts = attempts + 1
+          if attempts <= times then
+            local delay = backoff + (backoff * rand.num())
+            backoff = backoff * multiplier
+            backend.sleep(delay)
+            if canceled then
+              return false, { status = 0, canceled = true }
+            end
+          end
         end
-        times = times - 1
-        local delay = backoff + (backoff * rand.num())
-        backoff = backoff * multiplier
-        backend.sleep(delay)
+        current_req = do_request(url, opts)
+        local ok, resp = current_req.await()
+        current_req = nil
+        return ok, resp
       end
-      return fetch_fn(url0, opts0)
-    end
+    }
   end
 
   local function fetch (url, opts)
     opts = opts or {}
-    local fetcher = with_retry(do_fetch, opts)
-    return fetcher(url, opts)
+    if opts.cancelable then
+      return create_request(url, opts)
+    end
+    return create_request(url, opts).await()
   end
 
   local function get (url, opts)
