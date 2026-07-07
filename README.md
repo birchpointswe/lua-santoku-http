@@ -1,93 +1,130 @@
-# Santoku HTTP
+# santoku-http
 
-Santoku HTTP is an HTTP client library for Lua providing request/response
-handling, automatic JSON encoding/decoding, retry logic, and interceptor-based
-request modification.
+A transport-agnostic HTTP client front end for Lua, built on base
+[`santoku`](../lua-santoku/README.md) (`santoku.async`, `santoku.string`,
+`santoku.random`). It adds query-string building, retry with backoff,
+cancellation, and request/response hooks on top of a backend you supply. It
+performs no network I/O itself; the backend does that.
 
-## Module Reference
+This README is a usage guide, not an API reference. The tests are the spec:
+`test/spec/santoku/http.lua` exercises the full surface. For
+`santoku.async` (events), `santoku.string` (`to_query`), and `santoku.random`,
+see the [base `santoku` docs](../lua-santoku/README.md).
 
-### `santoku.http`
-HTTP client functionality with automatic JSON handling and configurable retry logic.
+## Backend contract
 
-| Function | Arguments | Returns | Description |
-|----------|-----------|---------|-------------|
-| `fetch` | `req` | `response, request` | Executes HTTP request with configured options |
-| `request` | `[method], [url], [opts], [done]` | `request_object` | Creates configurable HTTP request object |
-| `get_request` | `[url], [opts], [done]` | `request_object` | Creates GET request object |
-| `post_request` | `[url], [opts], [done]` | `request_object` | Creates POST request object |
-| `req` | `[method], [url], [opts], [done]` | `response, request` | Creates and executes request immediately |
-| `get` | `[url], [opts], [done]` | `response, request` | Executes GET request immediately |
-| `post` | `[url], [opts], [done]` | `response, request` | Executes POST request immediately |
-| `client` | `-` | `client_object` | Creates HTTP client with interceptor support |
+`require("santoku.http")` returns a factory. Call it with one `backend` table:
 
-#### Request Object Structure
+```lua
+local http = require("santoku.http")
+local client = http(backend)
+```
 
-The request object created by `request()` contains:
+The backend supplies the transport. Provide one of:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `method` | `string` | HTTP method (GET, POST, etc.) |
-| `url` | `string` | Request URL |
-| `headers` | `table` | Request headers |
-| `body` | `string/table` | Request body (tables are JSON-encoded for POST) |
-| `params` | `table` | Query parameters (encoded for GET requests) |
-| `done` | `function` | Callback function for handling response |
-| `events` | `event_emitter` | Event system for request/response interception |
-| `retry` | `table/false` | Retry configuration |
+- `backend.fetch(url, opts)` returning `ok, resp` (synchronous style), or
+- `backend.request(url, opts)` returning `{ cancel, await }` where `await()`
+  returns `ok, resp` (async style; `cancel()` aborts the in-flight request).
 
-#### Options Object
+It must also provide `backend.sleep(ms)`, used for retry backoff. `resp` is
+whatever your backend returns; this library only reads `resp.status` (for the
+default retry filter) and `resp.canceled` (to detect a backend-side cancel).
 
-The `opts` parameter accepts:
+## Returned API
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `method` | `string` | `"GET"` | HTTP method |
-| `url` | `string` | - | Request URL (alternative to positional) |
-| `headers` | `table` | `nil` | Request headers |
-| `body` | `string/table` | `nil` | Request body |
-| `params` | `table` | `nil` | Query parameters |
-| `done` | `function` | `error.checkok` | Response handler |
-| `retry` | `table/false` | `{}` | Retry configuration (false to disable) |
+The factory returns `{ fetch, get, post, on, off }`.
 
-#### Response Object
+- `get(url, opts)` sets `opts.method = "GET"`; if `opts.params` is set it appends
+  `str.to_query(opts.params)` to the url (a `?a=1&b=2` string).
+- `post(url, opts)` sets `opts.method = "POST"`.
+- `fetch(url, opts)` runs the request. With `opts.cancelable` it returns a
+  request object `{ cancel, await }`; otherwise it calls `await()` for you and
+  returns `ok, resp` directly.
+- `on(event, handler, async)` / `off(event, handler)` register hooks on the
+  `"request"` and `"response"` events (see Hooks).
 
-The response object contains:
+```lua
+local ok, resp = client.get("http://example/", { params = { q = "x" } })
+-- fetches http://example/?q=x  ->  ok, resp from the backend
+```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `ok` | `boolean` | True if status is 2xx |
-| `status` | `number` | HTTP status code |
-| `headers` | `table` | Response headers (lowercase keys) |
-| `body` | `string/table` | Response body (auto-parsed if JSON) |
+covers: `test/spec/santoku/http.lua` ("get returns a response", "get builds a
+query string from params").
 
-#### Retry Configuration
+## Retry
 
-The `retry` option accepts a table with:
+`opts.retry` controls retry. It defaults to on (an empty table); set
+`opts.retry = false` to disable. Fields:
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `times` | `number` | `3` | Maximum retry attempts |
-| `backoff` | `number` | `1` | Initial backoff in seconds |
-| `multiplier` | `number` | `3` | Backoff multiplier per retry |
-| `filter` | `function` | - | Custom retry condition function |
+- `times` (default 3): maximum retries after the first attempt.
+- `backoff` (default 1000): initial delay passed to `backend.sleep`.
+- `multiplier` (default 3): the delay is multiplied by this after each retry.
+- `filter(ok, resp)` (default below): return true to retry, false to stop.
 
-Default retry filter retries on status codes: 502, 503, 504, 429
+The default filter retries when there is no status (`nil`/`0`) or the status is
+`502`, `503`, `504`, or `429`. Each backoff is `backoff + backoff * rand.num()`
+(jittered), then `backoff` grows by `multiplier`.
 
-#### Client Object
+```lua
+-- one attempt, no retry
+local ok, resp = client.get(url, { retry = false })
 
-The client object returned by `client()` provides:
+-- up to 5 retries, custom predicate
+client.get(url, { retry = { times = 5, filter = function (ok, resp)
+  return not ok
+end } })
+```
 
-| Method | Arguments | Returns | Description |
-|--------|-----------|---------|-------------|
-| `on` | `event, handler, [prepend]` | `nil` | Register event handler |
-| `off` | `event, handler` | `nil` | Unregister event handler |
-| `req` | `[method], [url], [opts], [done]` | `response, request` | Execute intercepted request |
-| `get` | `[url], [opts], [done]` | `response, request` | Execute intercepted GET |
-| `post` | `[url], [opts], [done]` | `response, request` | Execute intercepted POST |
+covers: `test/spec/santoku/http.lua` ("retries then succeeds", "retry = false
+disables retry").
 
-Client events:
-- `"request"`: Fired before request execution, receives `(callback, request)`
-- `"response"`: Fired after response, receives `(callback, ok, response, request)`
+## Cancelable requests
+
+With `opts.cancelable`, `fetch` returns `{ cancel, await }` instead of running to
+completion. Call `await()` to drive it; call `cancel()` to abort. A canceled
+request resolves to `false, { status = 0, canceled = true }`. Cancellation is
+checked before each attempt and after each backoff, and if a request is in
+flight the backend's `cancel` is invoked.
+
+```lua
+local req = client.fetch(url, { cancelable = true })
+req.cancel()
+local ok, resp = req.await()   -- false, { status = 0, canceled = true }
+```
+
+covers: `test/spec/santoku/http.lua` ("cancelable request short-circuits with
+the canceled sentinel").
+
+## Hooks
+
+`on`/`off` wrap `santoku.async` events. The `"request"` event runs before send
+with `(url, opts)`; the `"response"` event runs after with `(ok, resp)`. To
+rewrite the values, register the handler as async (third argument `true`) and
+pass the new values forward through the continuation:
+
+```lua
+client.on("request", function (k, url, opts)
+  return k(url .. "?tagged=1", opts)
+end, true)
+
+client.on("response", function (k, ok, resp)
+  resp.body = process(resp.body)
+  return k(ok, resp)
+end, true)
+```
+
+A synchronous handler (no third argument) sees the values but its return is not
+propagated; it can still mutate the passed `opts`/`resp` table in place.
+
+covers: `test/spec/santoku/http.lua` ("request and response hooks rewrite
+url/opts/resp").
+
+## Testing
+
+This repo uses the `toku` build harness. The spec lives in
+`test/spec/santoku/http.lua` and drives the module with a mock backend (canned
+`fetch` results and a counting no-op `sleep`), so no network is used. Run the
+suite through `toku`.
 
 ## License
 
