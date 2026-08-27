@@ -1,56 +1,3 @@
-<p align="center">
-  <img src="https://santoku.dev/logo-santoku-http.png" height="64" alt="santoku-http">
-</p>
-
-# santoku-http
-
-A transport-agnostic HTTP client front end. You supply the backend that does the network
-I/O; this adds query-string building, retry with backoff, cancellation, and request and
-response hooks on top of it.
-
-## Install
-
-```sh
-luarocks install santoku-http
-```
-
-## Example
-
-```lua
-local http = require("santoku.http")
-local socket = require("santoku.socket")
-
-local client = http(socket)
-
-local ok, resp = client.get("https://example.com/search", { params = { q = "lua" } })
-
-if ok then
-  print(resp.status, resp.body)
-end
-```
-
-Any table with a `fetch(url, opts)` or `request(url, opts)` function works as the backend,
-which makes the client trivial to test without a network.
-
-## Documentation
-
-Runnable examples and the full API: [santoku.dev](https://santoku.dev/#santoku-http).
-
-For agents and LLM tooling: [llms.txt](https://santoku.dev/llms.txt) for the index,
-[llms-full.txt](https://santoku.dev/llms-full.txt) for every documented example.
-
-## Tests
-
-The tests are the spec. For the exhaustive surface, read them:
-[`test/spec/santoku/http.lua`](test/spec/santoku/http.lua).
-
-## License
-
-MIT, see [LICENSE](LICENSE).
-
-## More examples
-
-```lua
 local test = require("santoku.test")
 
 local err = require("santoku.error")
@@ -119,4 +66,3 @@ test("a cancelable request short-circuits before it is issued", function ()
   assert(eq(true, resp.canceled))
   assert(eq(0, stats()))
 end)
-```
